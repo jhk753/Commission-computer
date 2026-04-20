@@ -1,0 +1,139 @@
+// Commission Computer — data model
+// A sales rep (User) is assigned a Plan made of one or more Components.
+// Each Component has its own rate, cadence (monthly/quarterly/annually),
+// optional accelerators and kicker. Deals pulled from CRM (HubSpot /
+// Salesforce) feed the engine that computes attainment and payouts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("rep") // "admin" | "rep"
+  crmOwnerId   String?  // links to HubSpot owner id or Salesforce user id
+  createdAt    DateTime @default(now())
+
+  plans    PlanAssignment[]
+  deals    Deal[]
+  payouts  Payout[]
+}
+
+model Plan {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  periodYear   Int      // fiscal year the plan applies to
+  ote          Float    // on-target earnings
+  baseSalary   Float    @default(0)
+  createdAt    DateTime @default(now())
+
+  components  PlanComponent[]
+  assignments PlanAssignment[]
+}
+
+model PlanComponent {
+  id              String   @id @default(cuid())
+  planId          String
+  plan            Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  name            String
+  kind            String   // "commission" | "bonus" | "sdr_meeting" | "mbo"
+  weight          Float    @default(1) // share of variable OTE this component represents (0-1)
+  cadence         String   // "monthly" | "quarterly" | "annually"
+
+  // Quota & rate
+  quotaAnnual     Float    // full year quota (revenue target or unit count)
+  baseRate        Float    // % of attainment paid as commission (e.g. 0.08 = 8%)
+
+  // Gate – attainment threshold below which nothing is paid (e.g. 0.5 = 50%)
+  floor           Float    @default(0)
+
+  // Cap – maximum payout multiple applied on base rate (0 = no cap)
+  cap             Float    @default(0)
+
+  // Kicker – flat bonus when 100% attainment is reached
+  kickerAt100     Float    @default(0)
+
+  accelerators    Accelerator[]
+  payouts         Payout[]
+}
+
+// An accelerator multiplies the base rate for the portion of attainment
+// above `fromPercent`. Several tiers can stack (>=100%, >=120%, ...).
+model Accelerator {
+  id            String        @id @default(cuid())
+  componentId   String
+  component     PlanComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  fromPercent   Float         // e.g. 1.0 = from 100% of quota
+  toPercent     Float?        // null = no upper bound
+  multiplier    Float         // e.g. 1.5 = 1.5x the base rate
+}
+
+model PlanAssignment {
+  id       String @id @default(cuid())
+  userId   String
+  planId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, planId])
+}
+
+model Deal {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  source      String   // "hubspot" | "salesforce" | "manual"
+  sourceId    String?  // external id
+  name        String
+  amount      Float
+  currency    String   @default("EUR")
+  stage       String   // "won" | "open" | "lost"
+  probability Float    @default(0) // 0..1, used for estimation
+  closeDate   DateTime
+  product     String?  // arbitrary tag used to filter per component
+
+  createdAt   DateTime @default(now())
+
+  @@unique([source, sourceId])
+  @@index([userId, closeDate])
+}
+
+// Snapshot of a computed payout for audit / history.
+model Payout {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  componentId   String
+  component     PlanComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+
+  periodKey     String // e.g. "2026-Q1" or "2026"
+  attainment    Float
+  amount        Float
+  computedAt    DateTime @default(now())
+  status        String   @default("projected") // "projected" | "locked" | "paid"
+
+  @@unique([userId, componentId, periodKey])
+}
+
+model Integration {
+  id           String   @id @default(cuid())
+  provider     String   // "hubspot" | "salesforce"
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  metadata     String?  // JSON blob
+  createdAt    DateTime @default(now())
+
+  @@unique([provider])
+}
