@@ -8,14 +8,13 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  await prisma.deal.deleteMany({});
-  await prisma.planAssignment.deleteMany({});
-  await prisma.accelerator.deleteMany({});
-  await prisma.planComponent.deleteMany({});
-  await prisma.plan.deleteMany({});
-  await prisma.payout.deleteMany({});
-  await prisma.user.deleteMany({});
-  await prisma.integration.deleteMany({});
+  // Idempotent: only seed when DB is empty. Re-running (e.g. on every
+  // Vercel deploy) is a no-op once data exists.
+  const existing = await prisma.user.count();
+  if (existing > 0) {
+    console.log(`Seed skipped — ${existing} users already exist.`);
+    return;
+  }
 
   const year = new Date().getUTCFullYear();
 

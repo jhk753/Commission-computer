@@ -6,11 +6,28 @@ accélérateurs, kickers, floor, cap…) et permet à chaque commercial de
 voir son estimation de commission **fin de trimestre** et **fin d'année**
 en temps réel.
 
+## Déploiement Vercel (1-clic)
+
+1. Crée une base **Postgres** gratuite sur [neon.tech](https://neon.tech)
+   (30 secondes, pas de carte). Copie la connection string.
+2. Sur Vercel : **New Project → Import Git Repository →** sélectionne
+   ce repo et la branche `claude/commission-tracking-app-PHkAO`.
+3. Dans **Environment Variables**, ajoute :
+   - `DATABASE_URL` = la connection string Neon
+   - `AUTH_SECRET` = une longue chaîne aléatoire (`openssl rand -hex 32`)
+4. Clique **Deploy**. Le build pousse le schéma et seed les comptes démo
+   automatiquement (idempotent : ne re-seed pas si la DB contient déjà
+   des utilisateurs).
+5. Une fois déployé, connecte-toi avec `admin@demo.io` / `admin123`.
+
 ## Démo locale
 
+Postgres local requis (Docker en une ligne) :
+
 ```bash
+docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=dev --name cc-pg postgres:16
 npm install
-cp .env.example .env       # rien à modifier pour la démo locale
+cp .env.example .env
 npm run setup              # prisma generate + db push + seed
 npm run dev
 ```
